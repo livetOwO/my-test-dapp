@@ -1,0 +1,139 @@
+version: 2.1
+
+orbs:
+  aws-ecr: circleci/aws-ecr@8.1.2
+  jira: circleci/jira@1.3.1
+  slack: circleci/slack@4.10.1
+
+jobs:
+  test:
+    docker:
+      - image: cimg/node:16.14
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - restore_cache:
+          key: dependencies-{{ checksum "yarn.lock" }}
+      - run: yarn install
+      - save_cache:
+          paths:
+            - node_modules
+          key: dependencies-{{ checksum "yarn.lock" }}
+      - run: yarn test
+      - slack/notify:
+          event: fail
+          mentions: '@server'
+          template: basic_fail_1
+  deploy:
+    docker:
+      - image: cimg/aws:2022.09
+    parameters:
+      registry:
+        type: string
+      cluster:
+        type: string
+      service:
+        type: string
+      task:
+        type: string
+      stack:
+        type: string
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - setup_remote_docker:
+          version: 20.10.17
+          docker_layer_caching: true
+      - aws-ecr/build-and-push-image:
+          repo: << parameters.registry >>\
+          extra-build-args: --build-arg AWS_ENV=<< parameters.stack >>
+      - run: aws ecs update-service --cluster << parameters.cluster >> --service << parameters.service >> --task-definition << parameters.task >> --force-new-deployment
+      - slack/notify:
+          event: fail
+          mentions: '@server'
+          template: basic_fail_1
+
+workflows:
+  test:
+    jobs:
+      - test:
+          context:
+            - Slack Integration
+          filters:
+            branches:
+              only: /feature\/.*/
+  deploy_dev:
+    jobs:
+      - deploy:
+          context:
+            - Pulumi
+            - Slack Integration
+            - CircleCI
+          # Fix the registry name to the real one
+          registry: abc
+          # Fix the cluster name to the real one
+          cluster: xxx
+          # Fix the service name to the real one
+          service: yyy
+          # Fix the task definition name to the real one
+          task: zzz
+          stack: dev
+          filters:
+            branches:
+              # Fix the branch name to develop in real projects
+              only: develop1
+          # Uncomment the post-steps below in real projects
+          # post-steps:
+          #   - jira/notify:
+          #       environment_type: development
+          #       job_type: deployment
+  deploy_stg:
+    jobs:
+      - deploy:
+          context:
+            - Pulumi
+            - Slack Integration
+            - CircleCI
+          # Fix the registry name to the real one
+          registry: abc
+          # Fix the cluster name to the real one
+          cluster: xxx
+          # Fix the service name to the real one
+          service: yyy
+          # Fix the task definition name to the real one
+          task: zzz
+          stack: stg
+          filters:
+            branches:
+              # Fix the branch name to release in real projects
+              only: /release1\/.*/
+          # Uncomment the post-steps below in real projects
+          # post-steps:
+          #   - jira/notify:
+          #       environment_type: staging
+          #       job_type: deployment
+  deploy_prd:
+    jobs:
+      - deploy:
+          context:
+            - Pulumi
+            - Slack Integration
+            - CircleCI
+          # Fix the registry name to the real one
+          registry: abc
+          # Fix the cluster name to the real one
+          cluster: xxx
+          # Fix the service name to the real one
+          service: yyy
+          # Fix the task definition name to the real one
+          task: zzz
+          stack: prd
+          filters:
+            branches:
+              # Fix the branch name to main in real projects
+              only: main1
+          # Uncomment the post-steps below in real projects
+          # post-steps:
+          #   - jira/notify:
+          #       environment_type: production
+          #       job_type: deployment
